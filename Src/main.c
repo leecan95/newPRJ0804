@@ -22,6 +22,7 @@
 #include "main.h"
 #include "string.h"
 #include <stdio.h>
+#include "eeprom.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -51,11 +52,18 @@ UART_HandleTypeDef huart2;
 uint8_t rx_buff[BUFSIZE] = {0,};
 uint16_t rx_buff_len;
 uint8_t test_buff[20] = {0,};
-char  Rx_data[2],Rx_data2[2], Rx_Buffer[40], Transfer_cplt, Rx_Buffer2[40], Transfer_cplt2;
+uint16_t  Rx_data[2], Rx_Buffer[40], Transfer_cplt, Rx_Buffer2[40], Transfer_cplt2;
+uint8_t Rx_data2[2];
 int Rx_indx = 0, Rx_indx2 = 0;
+int j = 3;
 uint8_t rxBuffer[4], rxBuffer2[4];
 uint8_t Header[10];
+uint8_t i;
+uint32_t Address = 0x0800C000;
 
+uint16_t VirtAddVarTab[NB_OF_VAR] = {0x5555, 0x6666, 0x7777};
+uint16_t VarDataTab[NB_OF_VAR] = {0, 0, 0};
+uint16_t VarValue,VarDataTmp = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,7 +89,7 @@ PUTCHAR_PROTOTYPE
 {
  /* Place your implementation of fputc here */
  /* e.g. write a character to the USART */
- HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 100);
+ HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 100);
 
 
  return ch;
@@ -206,9 +214,12 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&huart1, Rx_data, 1);
-  HAL_UART_Receive_IT(&huart2, Rx_data2, 1);
+  HAL_UART_Receive_IT(&huart1, Rx_data, 2);
+  EE_Init();
+  HAL_FLASH_Unlock();
+  //HAL_UART_Receive_IT(&huart1, Rx_data2, 1);
   //__HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
    // HAL_UART_Receive_IT(&huart1, (uint8_t*)rx_buff, BUFSIZE);
 
@@ -225,7 +236,10 @@ int main(void)
 	  //printf("%s", Rx_Buffer);
 	  //sprintf(test_buff,"gia tri rx %s\r\n",rx_buff);
 	  //HAL_UART_Transmit(&huart1, (uint8_t*)"Lee", 5, 1000);
+	 if(Rx_Buffer[0] != 0x5200)
 	 HAL_UART_Transmit(&huart1, (uint8_t*)Rx_Buffer, sizeof(Rx_Buffer), 1000);
+	 //HAL_UART_Transmit(&huart1, (uint8_t*)j, 2, 1000);
+	  //printf("alo %d", j);
 	 // HAL_UART_Transmit(&huart1, (uint8_t*)Rx_Buffer2, sizeof(Rx_Buffer2), 1000);
 	  HAL_Delay(1000);
 
@@ -250,9 +264,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         if (Rx_indx==0) {
         	for (i=0;i<100;i++) Rx_Buffer[i]=0;
         }   //clear Rx_buffer trước khi nhận dữ liệu mới
-       // else if (sizeof(Rx_Buffer > 40)){
-        //	for (i=0;i<100;i++) Rx_Buffer[i]=0;
-     //   }
+      // else if (sizeof(Rx_Buffer > 40)){
+        	//for (i=0;i<100;i++) Rx_Buffer[i]=0;
+        //}
 
 
         /*HAL_UART_Receive(&huart1,Header,9,0xFFFF);
@@ -266,24 +280,30 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				Rx_indx=0;
 			}
         }*/
-        if (Rx_data[0] == 'R') {
-        	HAL_UART_Receive(&huart1,Header,8,0xFFFF);
+        if ((uint8_t*)(Rx_data[0] >> 8) == 0x52 ||Rx_data[0] == 0x52) {
+        	HAL_UART_Receive(&huart1,Header,7,0xFFFF);
         	if(Header[0]=='0'){
 				 HAL_UART_Transmit(&huart1, (uint8_t*)"Oke\r\n", 5, 1000);
 				 Rx_indx=0;
 			}
-		else{
-			HAL_UART_Transmit(&huart1, (uint8_t*)"Fail\r\n", 6, 1000);
-			Rx_indx=0;
-			}
+			else{
+				HAL_UART_Transmit(&huart1, (uint8_t*)"Fail\r\n", 6, 1000);
+				Rx_indx=0;
+				}
+
 
         }
-        if (Rx_data[0]!='\n' && Rx_data[0]!= 'R') //Nếu nhận dữ liệu là khác dấu xuống dòng
-            {
+        //if (Rx_data[0]!='\n' && Rx_data[0]!= 'R' &&  Rx_data[0]!= '\r' ) //Nếu nhận dữ liệu là khác dấu xuống dòng
+            if((uint8_t*)(Rx_data[0] >> 8) != 0x0d && (uint8_t*)(Rx_data[0] >> 8) != 0x0a && (uint8_t*)(Rx_data[0] >> 8) != 0x52 && (uint8_t*)Rx_data[0] != 0x0d && (uint8_t*)Rx_data[0] != 0x0a&& (uint8_t*)Rx_data[0] != 0x52)
+        {
 
             Rx_Buffer[Rx_indx++]=Rx_data[0];  //thêm dữ liệu vào Rx_Buffer
-            char test_rx = Rx_data[0];
-            HAL_UART_Transmit(&huart1,(uint8_t*)test_rx, 1,0xFFFF);
+            uint16_t test_rx[2];
+            test_rx[0] = Rx_data[0];
+            //test_rx[1] = Rx_data[1];
+            Address = Address + 2;
+            HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,Address, Rx_data[0] );
+            HAL_UART_Transmit(&huart1,(uint8_t*)&test_rx, 1,0xFFFF);
             }
         /*else if (Rx_data[0] == 'R'){
         	HAL_UART_Receive(&huart1,Rx_data2,1,100);
@@ -302,7 +322,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
             Transfer_cplt=1;//Cờ báo hiệu đã chuyển dữ liệu xong và tiến hành đọc dữ liệu
             }
         //HAL_UART_Transmit(&huart1, (uint8_t*)Rx_data, sizeof(Rx_data), 5000);
-        HAL_UART_Receive_IT(&huart1, Rx_data, 1);   //Kích hoạt ngắt UART mỗi data nhận được
+        //HAL_UART_Receive_IT(&huart1, Rx_data2, 1);
+        HAL_UART_Receive_IT(&huart1, Rx_data, 2);   //Kích hoạt ngắt UART mỗi data nhận được
         }
 
 }
